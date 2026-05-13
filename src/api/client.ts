@@ -1,6 +1,7 @@
 import { ApiResponse } from '../types/api';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || '';
+const REQUEST_TIMEOUT_MS = 20000;
 
 function assertBaseUrl() {
   if (!BASE_URL) {
@@ -35,16 +36,22 @@ export async function apiRequest<T>(
     requestBody = params.toString();
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   let res: Response;
   try {
     res = await fetch(url, {
       method,
       headers,
-      body: requestBody
+      body: requestBody,
+      signal: controller.signal
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Request failed: ${method} ${url} (${message})`);
+  } finally {
+    clearTimeout(timeout);
   }
 
   const text = await res.text();

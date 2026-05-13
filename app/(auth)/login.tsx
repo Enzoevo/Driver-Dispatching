@@ -2,7 +2,7 @@ import { login } from '../../src/api/auth';
 import { useAuth } from '../../src/state/auth-context';
 import { router } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, SafeAreaView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 
 function hasValidSessionPayload(value: unknown): value is { token: string; driver: { id: number; name: string; device_code: string } } {
   if (!value || typeof value !== 'object') {
@@ -28,6 +28,7 @@ function todayLabel() {
 export default function LoginScreen() {
   const { token, setSession } = useAuth();
   const [deviceCode, setDeviceCode] = useState('');
+  const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const shiftLabel = useMemo(() => todayLabel(), []);
@@ -42,7 +43,7 @@ export default function LoginScreen() {
     setLoading(true);
     setError('');
     try {
-      const res = await login(deviceCode.trim());
+      const res = await login(deviceCode.trim(), pin.trim());
       if (!res.success) {
         setError(res.error.message || 'Login failed');
         return;
@@ -62,10 +63,11 @@ export default function LoginScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.backgroundOrbTop} />
-      <View style={styles.backgroundOrbBottom} />
-      <View style={styles.container}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.backgroundOrbTop} />
+        <View style={styles.backgroundOrbBottom} />
+        <View style={styles.container}>
         <View style={styles.heroCard}>
           <View style={styles.heroBadgeRow}>
             <View style={styles.heroBadge}>
@@ -99,6 +101,19 @@ export default function LoginScreen() {
             style={styles.input}
           />
 
+          <Text style={styles.label}>PIN</Text>
+          <TextInput
+            value={pin}
+            onChangeText={setPin}
+            placeholder="Enter PIN"
+            placeholderTextColor="#64748b"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="number-pad"
+            secureTextEntry
+            style={styles.input}
+          />
+
           {!!error && <Text style={styles.error}>{error}</Text>}
 
           <Pressable style={[styles.btn, loading && styles.disabled]} onPress={onLogin} disabled={loading}>
@@ -110,8 +125,9 @@ export default function LoginScreen() {
             <Text style={styles.supportText}>If this device does not have a code yet, contact dispatch or admin before starting your shift.</Text>
           </View>
         </View>
-      </View>
-    </SafeAreaView>
+        </View>
+      </SafeAreaView>
+    </TouchableWithoutFeedback>
   );
 }
 

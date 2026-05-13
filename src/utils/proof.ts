@@ -5,6 +5,25 @@ import { Job } from '../types/api';
 
 type Coords = { lat?: string; lng?: string };
 
+const GPS_TIMEOUT_MS = 5000;
+const ROUTE_ETA_TIMEOUT_MS = 6000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timeout = setTimeout(() => resolve(null), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
 export async function pickPhotoBase64(): Promise<string> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
   if (!permission.granted) {
@@ -29,7 +48,14 @@ export async function captureGpsOptional(): Promise<Coords> {
   if (status !== 'granted') {
     return {};
   }
-  const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+  const pos = await withTimeout(
+    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+    GPS_TIMEOUT_MS
+  );
+  if (!pos) {
+    return {};
+  }
+
   return {
     lat: Number(pos.coords.latitude).toFixed(7),
     lng: Number(pos.coords.longitude).toFixed(7)
@@ -51,19 +77,29 @@ export async function estimateRouteEta(job: Job): Promise<{ startedAt: string; e
     return null;
   }
 
-  const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/json', {
-    method: 'POST',
-    headers: {
-      Authorization: apiKey,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      coordinates: [
-        [Number(origin.lng), Number(origin.lat)],
-        [Number(job.longitude), Number(job.latitude)]
-      ]
-    })
-  });
+  const controller = new AbortController();
+  const routeTimeout = setTimeout(() => controller.abort(), ROUTE_ETA_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/json', {
+      method: 'POST',
+      headers: {
+        Authorization: apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        coordinates: [
+          [Number(origin.lng), Number(origin.lat)],
+          [Number(job.longitude), Number(job.latitude)]
+        ]
+      }),
+      signal: controller.signal
+    });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(routeTimeout);
+  }
 
   if (!response.ok) {
     return null;
